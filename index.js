@@ -4,7 +4,6 @@ const cheerio = require('cheerio');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Interfaz visual del navegador
 app.get('/', (req, res) => {
     res.send(`
         <!DOCTYPE html>
@@ -12,7 +11,7 @@ app.get('/', (req, res) => {
         <head>
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>Mi Navegador Emulado</title>
+            <title>Mi Navegador con Buscador</title>
             <style>
                 body { margin: 0; font-family: sans-serif; display: flex; flex-direction: column; height: 100vh; background: #202124; overflow: hidden; }
                 .bar { display: flex; padding: 10px; background: #35363a; gap: 10px; align-items: center; }
@@ -23,19 +22,33 @@ app.get('/', (req, res) => {
         </head>
         <body>
             <div class="bar">
-                <input type="text" id="urlInput" value="https://www.wikipedia.org" placeholder="Introduce una URL (ej. https://wikipedia.org)">
-                <button onclick="navegar()">Ir</button>
+                <input type="text" id="urlInput" value="https://www.wikipedia.org" placeholder="Busca en Google o escribe una URL...">
+                <button onclick="navegar()">Buscar / Ir</button>
             </div>
             <iframe id="browserFrame" src="/proxy?url=https://www.wikipedia.org"></iframe>
 
             <script>
                 function navegar() {
-                    let url = document.getElementById('urlInput').value.trim();
-                    if (!url.startsWith('http://') && !url.startsWith('https://')) {
-                        url = 'https://' + url;
+                    let input = document.getElementById('urlInput').value.trim();
+                    if (!input) return;
+
+                    let destino = input;
+
+                    // Detectar si es una URL válida o si el usuario está buscando algo
+                    const esUrl = input.includes('.') && !input.includes(' ');
+
+                    if (esUrl) {
+                        if (!input.startsWith('http://') && !input.startsWith('https://')) {
+                            destino = 'https://' + input;
+                        }
+                    } else {
+                        // Si no es URL, lo mandamos al buscador de Google cifrado
+                        destino = 'https://www.google.com/search?q=' + encodeURIComponent(input);
                     }
-                    document.getElementById('browserFrame').src = '/proxy?url=' + encodeURIComponent(url);
+
+                    document.getElementById('browserFrame').src = '/proxy?url=' + encodeURIComponent(destino);
                 }
+
                 document.getElementById('urlInput').addEventListener('keypress', function (e) {
                     if (e.key === 'Enter') navegar();
                 });
@@ -45,20 +58,20 @@ app.get('/', (req, res) => {
     `);
 });
 
-// Servidor Proxy que rompe los bloqueos de las webs
 app.get('/proxy', async (req, res) => {
     const targetUrl = req.query.url;
     if (!targetUrl) return res.status(400).send('Falta la URL');
 
     try {
         const response = await axios.get(targetUrl, {
-            headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
+            headers: { 
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36' 
+            },
             timeout: 10000
         });
 
         const $ = cheerio.load(response.data);
 
-        // Inyectar script para evitar que la web rompa el iframe
         $('head').prepend(`
             <script>
                 if (window.top !== window.self) { window.top.location = null; }
@@ -67,7 +80,7 @@ app.get('/proxy', async (req, res) => {
 
         res.send($.html());
     } catch (error) {
-        res.status(500).send('No se pudo cargar la página. Algunas webs bloquean proxies automatizados.');
+        res.status(500).send('No se pudo cargar la página. Nota: Google y otras webs ultra-protegidas pueden bloquear peticiones automáticas de servidores gratuitos.');
     }
 });
 
